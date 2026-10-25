@@ -273,17 +273,6 @@ main{max-width:1150px;margin:0 auto;padding:20px;display:grid;grid-template-colu
  box-shadow:var(--shadow-offset-x) var(--shadow-offset-y) var(--shadow-blur) var(--shadow-spread) color-mix(in srgb,var(--shadow-color) calc(var(--shadow-opacity)*100%),transparent)}
 .card h2{font-size:13px;margin:0 0 12px;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
 .full{grid-column:1/-1}
-.folder-strip{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;padding:6px 4px 10px}
-.folder-card{--folder-art:linear-gradient(135deg,#b8d4f0,#7160ae 48%,#252744);position:relative;isolation:isolate;min-height:154px;padding:70px 20px 18px;border:1px solid color-mix(in srgb,var(--foreground) 12%,transparent);border-radius:16px;overflow:visible;text-align:left;color:var(--foreground);background:transparent;cursor:pointer;transition:transform .25s ease,filter .25s ease}
-.folder-card::before{content:"";position:absolute;z-index:-2;left:0;right:0;top:18px;height:120px;border-radius:15px 15px 13px 13px;background:var(--folder-art);box-shadow:0 14px 30px rgb(15 23 42/.2);clip-path:polygon(0 9%,34% 9%,40% 0,68% 0,73% 9%,100% 9%,100% 100%,0 100%)}
-.folder-card::after{content:"";position:absolute;z-index:-1;inset:49px 0 0;border:1px solid rgb(255 255 255/.68);border-radius:14px;background:linear-gradient(145deg,rgb(255 255 255/.72),rgb(255 255 255/.38));backdrop-filter:blur(18px) saturate(1.4);box-shadow:inset 0 1px 0 rgb(255 255 255/.85),0 12px 26px rgb(15 23 42/.12);transform:perspective(700px) rotateX(0deg);transform-origin:50% 100%;transition:transform .35s ease}
-.dark .folder-card::after{background:linear-gradient(145deg,rgb(18 25 40/.72),rgb(18 25 40/.42));border-color:rgb(255 255 255/.28);box-shadow:inset 0 1px 0 rgb(255 255 255/.35),0 12px 26px rgb(0 0 0/.28)}
-.folder-card:hover,.folder-card:focus-visible{transform:translateY(-3px)}.folder-card:hover::after,.folder-card:focus-visible::after{transform:perspective(700px) rotateX(-13deg)}
-.folder-card:focus-visible{outline:2px solid var(--ring);outline-offset:4px}
-.folder-card strong,.folder-card span{position:relative;z-index:1;display:block}.folder-card strong{font-size:15px;font-weight:650}.folder-card span{margin-top:3px;color:var(--muted-foreground);font:12px var(--font-mono),ui-monospace,monospace}
-.folder-card[data-kind="preview"]{--folder-art:linear-gradient(135deg,#dbe7f3,#97b3c7 45%,#425b76)}
-.folder-card[data-kind="history"]{--folder-art:linear-gradient(135deg,#15221c,#477256 52%,#c5a15d)}
-@media(max-width:650px){.folder-strip{grid-template-columns:1fr;gap:12px}.folder-card{min-height:132px;padding-top:59px}.folder-card::before{height:105px}}
 #drop{border:2px dashed var(--input);border-radius:var(--radius);padding:34px 16px;text-align:center;cursor:pointer;color:var(--muted-foreground);transition:.15s}
 #drop.on,#drop:hover{border-color:var(--ring);color:var(--accent-foreground);background:var(--accent)}
 #drop b{display:block;font-size:16px;color:var(--foreground);margin-bottom:4px}
@@ -321,15 +310,11 @@ canvas{touch-action:none}
 #pcard.big{position:fixed;inset:4vh 4vw;z-index:50;display:flex;flex-direction:column;box-shadow:0 20px 60px rgb(0 0 0/.35)}
 #pcard.big canvas{flex:1;height:auto;min-height:0;cursor:grab}
 #pcard.big .msg{margin-top:8px}
+input[type=text],input[type=password]{padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--background);color:var(--foreground);font:inherit;font-size:13px}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px;margin-right:6px}@keyframes s{to{transform:rotate(360deg)}}
 </style></head><body>
 <header><h1>STL → STEP / SolidWorks</h1><span class="sub">Version 7 · runs locally, files never leave your computer</span><div class="theme" id="theme"><button type="button" data-t="light">Light</button><button type="button" data-t="dark">Dark</button><button type="button" data-t="auto">Auto</button></div></header>
 <main>
-<nav class="folder-strip" aria-label="Dashboard shortcuts">
-<button class="folder-card" type="button" data-kind="upload" data-go="upload"><strong>New conversion</strong><span id="folder-upload-meta">Choose or drop an STL</span></button>
-<button class="folder-card" type="button" data-kind="preview" data-go="preview"><strong>Mesh preview</strong><span id="folder-preview-meta">No mesh loaded</span></button>
-<button class="folder-card" type="button" data-kind="history" data-go="history"><strong>Conversion history</strong><span id="folder-history-meta">Loading recent files…</span></button>
-</nav>
 <section class="card"><h2>1 · Upload</h2>
 <div id="drop"><b>Drop an STL here</b>or click to choose a file</div>
 <input id="file" type="file" accept=".stl" hidden>
@@ -337,6 +322,11 @@ canvas{touch-action:none}
 <h2 style="margin-top:18px">2 · Output format</h2>
 <div class="seg" id="seg"><button type="button" class="on" data-f="step">STL → STEP<small>.step · works everywhere</small></button><button type="button" data-f="sldprt" id="bsld">STL → SolidWorks Part<small>.SLDPRT · needs SolidWorks</small></button></div>
 <div class="msg" id="fnote" style="margin-top:6px"></div>
+<details id="bridge" hidden style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">SolidWorks bridge (for a hosted / cloud dashboard)</summary>
+<div class="msg" style="margin:8px 0">On the Windows PC that has SolidWorks, run <code>python sw_bridge.py</code> (or double-click <code>start_bridge.bat</code>). Paste the address and token it shows. Use Chrome or Edge.</div>
+<div class="row"><label>Bridge address</label><input type="text" id="bturl" value="http://127.0.0.1:8765" style="width:200px"></div>
+<div class="row"><label>Token</label><input type="password" id="bttok" placeholder="from the bridge window" style="width:200px"></div>
+<div class="row"><button type="button" class="sec sm" id="bttest">Test connection</button><span class="msg" id="btstat"></span></div></details>
 <h2 style="margin-top:18px">3 · Settings</h2>
 <div class="row"><label>Recover curved surfaces<small>Holes, fillets, bosses, cones, domes</small></label><input type="checkbox" id="curves" checked></div>
 <div class="row"><label>Repair mesh first<small>Closes holes and fixes flipped triangles so you get a solid</small></label><input type="checkbox" id="repair" checked></div>
@@ -364,20 +354,14 @@ const PRE=[[0.0005,8],[0.002,10],[0.005,15]];
 $('preset').onchange=()=>{const p=PRE[+$('preset').value];$('tol').value=p[0];$('ang').value=p[1]};
 document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>{if(b.disabled)return;FMT=b.dataset.f;
  document.querySelectorAll('#seg button').forEach(x=>x.classList.toggle('on',x===b));$('go').textContent=LABEL[FMT];
- $('fnote').textContent=FMT==='sldprt'?'SolidWorks opens on this PC for a moment to save the part. A STEP file is always kept too.':''});
-fetch('/api/env').then(r=>r.json()).then(e=>{if(!e.sldprt){$('bsld').disabled=true;$('fnote').innerHTML='<span class="warn">SolidWorks Part is unavailable:</span> '+e.reason}});
+ $('fnote').textContent=FMT==='sldprt'?(SERVER_SW?'SolidWorks opens on this PC for a moment to save the part. A STEP file is always kept too.':'The part is made by SolidWorks on your own PC through the bridge. Enter its address and token below. A STEP file is always kept too.'):''});
+fetch('/api/env').then(r=>r.json()).then(e=>{if(!e.sldprt){SERVER_SW=false;$('bridge').hidden=false;$('bridge').open=true;$('fnote').innerHTML='<span class="warn">This server cannot run SolidWorks:</span> '+e.reason+' <b>Use the SolidWorks bridge below</b> to make the .SLDPRT on your own PC.'}});
 const CV=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const colr=k=>({plane:CV('--muted-foreground'),cyl:CV('--chart-1'),cone:CV('--chart-3'),sphere:CV('--ok'),torus:CV('--chart-5')})[k]||'#888';
 const NAME={plane:'Flat',cyl:'Cylinder',cone:'Cone',sphere:'Sphere',torus:'Rounded edge'};
 const fmt=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':n;
 const sz=b=>b>1e6?(b/1e6).toFixed(1)+' MB':Math.max(1,Math.round(b/1e3))+' KB';
-function pick(f){if(!f)return;FILE=f;$('fname').textContent=f.name+' · '+sz(f.size);$('folder-upload-meta').textContent=f.name;$('go').disabled=false;f.arrayBuffer().then(parse)}
-document.querySelectorAll('.folder-card').forEach(b=>b.onclick=()=>{
- if(b.dataset.go==='upload'){$('file').click();return}
- const target=b.dataset.go==='preview'?'pcard':'hist';
- if(target==='pcard'&&!TRIS){$('pinfo').textContent='Choose an STL file to load its preview';$('drop').scrollIntoView({behavior:'smooth',block:'center'});return}
- document.getElementById(target).scrollIntoView({behavior:'smooth',block:'center'});
-});
+function pick(f){if(!f)return;FILE=f;$('fname').textContent=f.name+' · '+sz(f.size);$('go').disabled=false;f.arrayBuffer().then(parse)}
 $('drop').onclick=()=>$('file').click();$('file').onchange=e=>pick(e.target.files[0]);
 ['dragover','dragenter'].forEach(t=>$('drop').addEventListener(t,e=>{e.preventDefault();$('drop').classList.add('on')}));
 ['dragleave','drop'].forEach(t=>$('drop').addEventListener(t,e=>{e.preventDefault();$('drop').classList.remove('on')}));
@@ -392,7 +376,7 @@ function parse(buf){const dv=new DataView(buf);let tris=[];
  const c=mn.map((v,i)=>(v+mx[i])/2),s=2/Math.max(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2],1e-9);
  const step=Math.max(1,Math.ceil(tris.length/7000));
  TRIS=tris.filter((_,i)=>i%step===0).map(t=>t.map((v,k)=>(v-c[k%3])*s));
- $('pinfo').textContent=fmt(tris.length)+' triangles'+(step>1?' (preview shows a sample)':'')+' · drag to rotate · Enlarge to auto-rotate';$('folder-preview-meta').textContent=fmt(tris.length)+' triangles ready';$('enl').disabled=false;draw()}
+ $('pinfo').textContent=fmt(tris.length)+' triangles'+(step>1?' (preview shows a sample)':'')+' · drag to rotate · Enlarge to auto-rotate';$('enl').disabled=false;draw()}
 function draw(){const cv=$('cv'),g=cv.getContext('2d'),W=cv.width,Hh=cv.height;g.clearRect(0,0,W,Hh);if(!TRIS)return;
  const cx=Math.cos(rx),sx=Math.sin(rx),cy=Math.cos(ry),sy=Math.sin(ry),sc=Math.min(W,Hh)*0.36;
  const P=[];for(const t of TRIS){const v=[];for(let k=0;k<3;k++){let x=t[k*3],y=t[k*3+1],z=t[k*3+2];
@@ -422,12 +406,35 @@ addEventListener('keydown',e=>{if(e.key==='Escape'&&BIG)setBig(false)});addEvent
 $('go').onclick=async()=>{if(!FILE)return;$('go').disabled=true;$('res').hidden=false;
  $('state').innerHTML='<span class="spin"></span>Converting… large meshes can take a minute';$('kpis').innerHTML='';$('advice').innerHTML='';$('bar').innerHTML='';$('leg').innerHTML='';$('log').textContent='';$('dls').innerHTML='';
  const q=new URLSearchParams({name:FILE.name,fmt:FMT,curves:$('curves').checked?1:0,repair:$('repair').checked?1:0,tol:$('tol').value,ang:$('ang').value,min:$('min').value});
- try{const r=await fetch('/api/convert?'+q,{method:'POST',body:FILE});const d=await r.json();show(d);loadHist()}
+ try{const r=await fetch('/api/convert?'+q,{method:'POST',body:FILE});const d=await r.json();show(d);loadHist();if(d.ok&&d.fmt==='sldprt'&&!d.sldprt&&bridgeReady())await viaBridge(d)}
  catch(e){$('state').innerHTML='<b class="bad">Could not reach the converter. Is dashboard.py still running?</b>'}
  $('go').disabled=false};
+let SERVER_SW=true;
+const brUrl=()=>($('bturl').value||'').replace(/\/+$/,''),brTok=()=>$('bttok').value.trim();
+try{$('bturl').value=localStorage.getItem('swb_url')||$('bturl').value;$('bttok').value=localStorage.getItem('swb_tok')||''}catch(e){}
+function saveBr(){try{localStorage.setItem('swb_url',$('bturl').value);localStorage.setItem('swb_tok',$('bttok').value)}catch(e){}}
+$('bturl').onchange=saveBr;$('bttok').onchange=saveBr;
+const bridgeReady=()=>!SERVER_SW&&!!brTok();
+$('bttest').onclick=async()=>{saveBr();$('btstat').textContent='Checking…';
+ try{const r=await fetch(brUrl()+'/ping');const j=await r.json();
+  $('btstat').innerHTML=j.solidworks?'<b class="good">Connected. SolidWorks is ready.</b>':'<b class="bad">Bridge found, but SolidWorks is not ready:</b> '+j.reason}
+ catch(e){$('btstat').innerHTML='<b class="bad">Cannot reach the bridge.</b> Is python sw_bridge.py running on your PC? Use Chrome or Edge.'}};
+async function viaBridge(d){
+ const set=h=>{const b=$('brst');if(b)b.innerHTML=h};
+ set(' · <span class="spin"></span>Asking SolidWorks on your PC…');
+ try{
+  const s=await fetch('/download/'+d.file);if(!s.ok)throw new Error('could not read the STEP file from the dashboard');
+  const body=await s.blob();
+  const r=await fetch(brUrl()+'/convert?name='+encodeURIComponent(d.name),{method:'POST',headers:{'X-Bridge-Token':brTok()},body});
+  if(!r.ok){let m='';try{m=(await r.json()).error}catch(_){}throw new Error(m||('the bridge answered '+r.status))}
+  const blob=await r.blob(),a=document.createElement('a');
+  a.className='dl';a.href=URL.createObjectURL(blob);a.download=d.name.replace(/\.(step|stp)$/i,'')+'.SLDPRT';
+  a.innerHTML='<button>Download SolidWorks Part (.SLDPRT)</button>';$('dls').prepend(a);
+  set(' · <b class="good">SolidWorks Part ready</b>');
+ }catch(e){set(' · <b class="bad">SolidWorks Part not created:</b> '+(e.message||e)+' (the STEP file is ready)')}}
 let LAST=null;
 function show(d){LAST=d;let st=d.ok?'<b class="good">Done</b> · '+d.mode+' · '+d.seconds+' s':'<b class="bad">Conversion failed</b> · see log';
- if(d.ok&&d.fmt==='sldprt'&&!d.sldprt)st+=' · <b class="bad">SolidWorks Part not created</b> (STEP is ready, see log)';$('state').innerHTML=st;
+ if(d.ok&&d.fmt==='sldprt'&&!d.sldprt&&!bridgeReady())st+=' · <b class="bad">SolidWorks Part not created</b> '+(SERVER_SW?'(STEP is ready, see log)':'(STEP is ready. Set up the SolidWorks bridge in the box under Output format)');st+='<span id="brst"></span>';$('state').innerHTML=st;
  $('log').textContent=(d.log||[]).join('\n');
  if(!d.ok)return;
  const tot=Object.values(d.faces).reduce((a,b)=>a+b,0),cur=Object.values(d.curved||{}).reduce((a,b)=>a+b,0);
@@ -439,7 +446,7 @@ function show(d){LAST=d;let st=d.ok?'<b class="good">Done</b> · '+d.mode+' · '
  if(tot){$('bar').innerHTML=Object.entries(d.faces).map(([k,v])=>'<div title="'+k+'" style="width:'+v/tot*100+'%;background:'+colr(k)+'"></div>').join('');
   $('leg').innerHTML=Object.entries(d.faces).map(([k,v])=>'<span><i style="background:'+colr(k)+'"></i>'+(NAME[k]||k)+' '+v+'</span>').join('')}
  $('dls').innerHTML=(d.sldprt?'<a class="dl" href="/download/'+d.sldprt+'"><button>Download SolidWorks Part (.SLDPRT)</button></a>':'')+'<a class="dl" href="/download/'+d.file+'"><button'+(d.sldprt?' class="sec"':'')+'>Download STEP</button></a>'}
-async function loadHist(){const h=await (await fetch('/api/history')).json();$('hnone').style.display=h.length?'none':'';$('folder-history-meta').textContent=h.length?fmt(h.length)+' conversion'+(h.length===1?'':'s')+' saved':'No conversions yet';
+async function loadHist(){const h=await (await fetch('/api/history')).json();$('hnone').style.display=h.length?'none':'';
  $('hist').innerHTML=h.map(x=>{const tot=Object.values(x.faces||{}).reduce((a,b)=>a+b,0);return '<tr><td>'+x.name+'</td><td>'+(x.sldprt?'STEP + SLDPRT':'STEP')+'</td><td><span class="tag">'+x.mode+'</span></td><td>'+fmt(x.tris)+'</td><td>'+fmt(tot)+'</td><td>'+x.seconds+' s</td><td>'+sz(x.size)+'</td><td><a class="dl" href="/download/'+x.file+'">STEP</a>'+(x.sldprt?' · <a class="dl" href="/download/'+x.sldprt+'">SLDPRT</a>':'')+'</td></tr>'}).join('')}
 function applyTheme(){let m='auto';try{m=localStorage.getItem('theme')||'auto'}catch(e){}
  const dark=m==='dark'||(m==='auto'&&matchMedia('(prefers-color-scheme:dark)').matches);

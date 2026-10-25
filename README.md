@@ -35,7 +35,7 @@ local **web dashboard**. On Windows with SolidWorks it can also save a `.SLDPRT`
 You need **Python 3.9 to 3.12** (tested on 3.12; the Docker, Codespaces and Actions setups use 3.11).
 
 ```bash
-git clone https://github.com/Dhananjay-CAD/STL-TO-Step.git
+git clone https://github.com/YOUR-NAME/stl-to-step.git
 cd stl-to-step
 pip install -r requirements.txt
 
@@ -115,7 +115,7 @@ if a whole face is missing, any through-holes in that face get capped too. Turn 
 `python dashboard.py` starts a local web page. Everything runs on your computer; results are saved in `dashboard_output/`.
 
 1. **Upload:** drop an STL on the page.
-2. **Output format:** *STL → STEP* or *STL → SolidWorks Part (.SLDPRT)*. The SolidWorks card is greyed out unless you are on Windows with `pywin32`.
+2. **Output format:** *STL → STEP* or *STL → SolidWorks Part (.SLDPRT)*. If the dashboard runs where SolidWorks is not available (cloud, Linux), it offers the [SolidWorks bridge](#hosted-dashboard-codespaces-docker-cloud-the-solidworks-bridge) instead.
 3. **Settings:** recover curved surfaces, repair mesh first, smoothing level, fit tolerance, angle tolerance, minimum triangles.
 4. **Convert,** then read the result: triangles in, faces out, curved surfaces found, **Faceted area**, **Volume match**, a face-type bar, the log and download buttons.
    Earlier conversions stay in **History**.
@@ -175,6 +175,26 @@ Needs Windows with SolidWorks installed and licensed. If it does not work, open 
 (File → Open → STEP, Options → *Solid/Surface geometry*, tick *Try Form Solid*) and use Save As.
 
 > This part has **not been tested against a real SolidWorks install** by the author. The STEP output itself is tested.
+
+### Hosted dashboard (Codespaces, Docker, cloud): the SolidWorks bridge
+
+A dashboard that runs in the cloud cannot reach SolidWorks. The **bridge** fixes that: a tiny program you start on your own
+Windows PC. Your browser sends the STEP to it, SolidWorks on your PC saves the `.SLDPRT`, and your browser downloads it,
+exactly like the STEP.
+
+1. On the Windows PC with SolidWorks: `pip install pywin32`, then `python sw_bridge.py` (or double-click **`start_bridge.bat`**).
+   It prints an **address** (`http://127.0.0.1:8765`) and a **token**. Keep that window open.
+2. In the dashboard choose **STL → SolidWorks Part**. A **SolidWorks bridge** box opens: paste the token, click
+   **Test connection**. (Both are remembered in your browser.)
+3. Convert. When the STEP is ready, the dashboard asks the bridge for the part and shows
+   **Download SolidWorks Part (.SLDPRT)** next to **Download STEP**. SolidWorks opens on your PC for a moment.
+
+Safety: the bridge only listens on `127.0.0.1` (your PC), accepts only STEP files, has a size limit, and every conversion needs the
+token. Use **Chrome or Edge** (they allow a web page to talk to `localhost`; Safari does not). If you run the dashboard on the same
+Windows PC as SolidWorks, you do not need the bridge: the dashboard does it directly.
+
+> The bridge's web server, token checks and the dashboard's side of the flow are tested with a stand-in for SolidWorks.
+> The final SolidWorks call is the same untested step as above.
 
 ---
 
@@ -259,7 +279,7 @@ seconds up to about 10 s; larger meshes take longer. These are synthetic CAD par
 | Output has many flat faces | Check **Faceted area**. For scans try Smoothing level *Medium* or *High*. |
 | Output is a surface, not a solid | Leave **Repair mesh first** on. If it still warns, repair the STL in Meshmixer or 3D Builder. |
 | Dashboard does not open | Go to `http://localhost:8000` yourself. If the port is busy it uses the next free one (see the terminal). |
-| SolidWorks card is greyed out | Read the message under it. "Running on Linux / Codespaces / Docker / WSL" means the dashboard is not running on your Windows PC: start it with Windows Python (`python dashboard.py` in PowerShell) on the PC that has SolidWorks. Otherwise it asks for `python -m pip install pywin32`, or says SolidWorks is not installed. Cloud copies can still make the STEP: download it and open it in SolidWorks, or run `python step2sldprt.py file.step` on your PC. |
+| SolidWorks Part says "This server cannot run SolidWorks" | Read the message under it, then use the **SolidWorks bridge** box (see the SolidWorks section). "Running on Linux / Codespaces / Docker / WSL" means the dashboard is not running on your Windows PC: start it with Windows Python (`python dashboard.py` in PowerShell) on the PC that has SolidWorks. Otherwise it asks for `python -m pip install pywin32`, or says SolidWorks is not installed. Cloud copies can still make the STEP: download it and open it in SolidWorks, or run `python step2sldprt.py file.step` on your PC. |
 
 </details>
 
@@ -271,6 +291,8 @@ seconds up to about 10 s; larger meshes take longer. These are synthetic CAD par
 stl2step.py          converter (command line + library)
 dashboard.py         local web dashboard
 step2sldprt.py       STEP → SolidWorks .SLDPRT (via the SolidWorks API)
+sw_bridge.py         local SolidWorks bridge for hosted dashboards
+start_bridge.bat     one-click launcher for the bridge (Windows)
 start_dashboard.bat  one-click launcher for Windows
 requirements.txt     numpy, cadquery-ocp, pywin32 (Windows)
 Dockerfile           for hosting the dashboard
