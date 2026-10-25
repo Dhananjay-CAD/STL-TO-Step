@@ -100,12 +100,31 @@ def run_job(name, data, o):
 
 
 def sldprt_available():
+    """(ok, reason). SolidWorks can only be driven by Python running on the Windows PC that has SolidWorks."""
     if os.name != "nt":
-        return False, "SolidWorks output needs Windows with SolidWorks installed."
+        import platform
+        rel = platform.release().lower()
+        if "microsoft" in rel or "wsl" in rel:
+            where = "WSL (Linux inside Windows)"
+        elif os.environ.get("CODESPACES"):
+            where = "GitHub Codespaces (Linux in the cloud)"
+        elif os.path.exists("/.dockerenv"):
+            where = "a Docker container or hosted server"
+        else:
+            where = platform.system() or "a non-Windows system"
+        return False, ("this dashboard is running on %s, not on your Windows PC, and SolidWorks cannot be reached from there. "
+                       "Run the dashboard with Windows Python (PowerShell: python dashboard.py) on the PC that has SolidWorks, "
+                       "or download the STEP file and open it in SolidWorks (File > Open)." % where)
     try:
         import win32com.client  # noqa
     except ImportError:
-        return False, "Run  pip install pywin32  to enable SolidWorks output."
+        return False, "the pywin32 library is missing. Run:  python -m pip install pywin32  then restart the dashboard."
+    try:
+        import winreg
+        winreg.CloseKey(winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, "SldWorks.Application"))
+    except Exception:
+        return False, ("SolidWorks was not found on this PC (SldWorks.Application is not registered). "
+                       "Install or repair SolidWorks, or download the STEP file and open it in SolidWorks.")
     return True, ""
 
 
