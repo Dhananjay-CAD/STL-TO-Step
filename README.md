@@ -317,7 +317,3 @@ python docs/make_gifs.py        # about a minute, rewrites docs/*.gif
 </details>
 
 ---
-
-## License
-
-Add a `LICENSE` file before publishing. The libraries used keep their own licenses (numpy, cadquery-ocp / OpenCascade, pywin32, Pillow for the animations).
