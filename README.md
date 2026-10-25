@@ -34,7 +34,7 @@ It can also hand the result to SolidWorks and save a `.SLDPRT` (Windows + SolidW
 You need **Python 3.9 to 3.12** (tested on 3.12; the Docker, Codespaces and Actions setups here use 3.11).
 
 ```bash
-git clone https://github.com/YOUR-NAME/stl-to-step.git
+git clone https://github.com/Dhananjay-CAD/STL-TO-Step.git
 cd stl-to-step
 pip install -r requirements.txt
 python dashboard.py          # opens http://localhost:8000
