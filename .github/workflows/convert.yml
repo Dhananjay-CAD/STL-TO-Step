@@ -1,0 +1,30 @@
+name: Convert STL to STEP
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "input/**.stl"
+      - "input/**.STL"
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          sudo apt-get update && sudo apt-get install -y libgl1 libglu1-mesa
+          pip install numpy cadquery-ocp
+      - name: Convert every STL in input/
+        run: |
+          mkdir -p output
+          shopt -s nullglob nocaseglob
+          files=(input/*.stl)
+          if [ ${#files[@]} -eq 0 ]; then echo "No STL files in input/"; exit 1; fi
+          python stl2step.py "${files[@]}" -o output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: step-files
+          path: output/*.step

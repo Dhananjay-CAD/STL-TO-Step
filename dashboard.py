@@ -283,9 +283,17 @@ a.dl{color:var(--primary);text-decoration:none;font-weight:600}
 .seg button small{display:block;font-weight:400;color:var(--muted-foreground);font-size:12px;margin-top:2px}
 .seg button.on{border-color:var(--primary);background:var(--accent);color:var(--accent-foreground)}
 .seg button:disabled{opacity:.45}
+.phead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.phead h2{margin:0}
+.pbtns{display:flex;align-items:center;gap:12px}.pbtns label{font-size:13px;color:var(--muted-foreground);display:flex;align-items:center;gap:6px;cursor:pointer}
+button.sm{padding:5px 10px;font-size:12px}
+canvas{touch-action:none}
+#pback{position:fixed;inset:0;background:rgb(0 0 0/.55);backdrop-filter:blur(2px);z-index:40}
+#pcard.big{position:fixed;inset:4vh 4vw;z-index:50;display:flex;flex-direction:column;box-shadow:0 20px 60px rgb(0 0 0/.35)}
+#pcard.big canvas{flex:1;height:auto;min-height:0;cursor:grab}
+#pcard.big .msg{margin-top:8px}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px;margin-right:6px}@keyframes s{to{transform:rotate(360deg)}}
 </style></head><body>
-<header><h1>STL → STEP / SolidWorks</h1><span class="sub">Version 5 · runs locally, files never leave your computer</span><div class="theme" id="theme"><button type="button" data-t="light">Light</button><button type="button" data-t="dark">Dark</button><button type="button" data-t="auto">Auto</button></div></header>
+<header><h1>STL → STEP / SolidWorks</h1><span class="sub">Version 7 · runs locally, files never leave your computer</span><div class="theme" id="theme"><button type="button" data-t="light">Light</button><button type="button" data-t="dark">Dark</button><button type="button" data-t="auto">Auto</button></div></header>
 <main>
 <section class="card"><h2>1 · Upload</h2>
 <div id="drop"><b>Drop an STL here</b>or click to choose a file</div>
@@ -304,7 +312,7 @@ a.dl{color:var(--primary);text-decoration:none;font-weight:600}
 <div class="row"><label>Min triangles per surface</label><input type="number" id="min" value="10" step="1" min="4"></div>
 <button id="go" disabled>Convert to STEP</button>
 </section>
-<section class="card"><h2>Preview</h2><canvas id="cv" width="560" height="280"></canvas><div class="msg" id="pinfo">Drag to rotate</div></section>
+<div id="pslot"><section class="card" id="pcard"><div class="phead"><h2>Preview</h2><div class="pbtns"><label id="autol" hidden><input type="checkbox" id="auto" checked> Auto-rotate</label><button type="button" class="sec sm" id="enl" disabled>⤢ Enlarge</button></div></div><canvas id="cv" width="560" height="280"></canvas><div class="msg" id="pinfo">Drag to rotate</div></section></div><div id="pback" hidden></div>
 <section class="card full" id="res" hidden><h2>Result</h2>
 <div id="state"></div>
 <div class="kpis" id="kpis"></div>
@@ -324,8 +332,8 @@ document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>{if(b.disabled
  $('fnote').textContent=FMT==='sldprt'?'SolidWorks opens on this PC for a moment to save the part. A STEP file is always kept too.':''});
 fetch('/api/env').then(r=>r.json()).then(e=>{if(!e.sldprt){$('bsld').disabled=true;$('fnote').innerHTML='<span class="warn">SolidWorks Part is unavailable:</span> '+e.reason}});
 const CV=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const colr=k=>({plane:CV('--muted-foreground'),cyl:CV('--chart-1'),cone:CV('--chart-3'),sphere:CV('--ok')})[k]||'#888';
-const NAME={plane:'Flat',cyl:'Cylinder',cone:'Cone',sphere:'Sphere'};
+const colr=k=>({plane:CV('--muted-foreground'),cyl:CV('--chart-1'),cone:CV('--chart-3'),sphere:CV('--ok'),torus:CV('--chart-5')})[k]||'#888';
+const NAME={plane:'Flat',cyl:'Cylinder',cone:'Cone',sphere:'Sphere',torus:'Rounded edge'};
 const fmt=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':n;
 const sz=b=>b>1e6?(b/1e6).toFixed(1)+' MB':Math.max(1,Math.round(b/1e3))+' KB';
 function pick(f){if(!f)return;FILE=f;$('fname').textContent=f.name+' · '+sz(f.size);$('go').disabled=false;f.arrayBuffer().then(parse)}
@@ -337,13 +345,13 @@ function parse(buf){const dv=new DataView(buf);let tris=[];
  const n=buf.byteLength>=84?dv.getUint32(80,true):0;
  if(84+n*50===buf.byteLength){for(let i=0;i<n;i++){const o=84+i*50+12;const t=[];for(let k=0;k<9;k++)t.push(dv.getFloat32(o+k*4,true));tris.push(t)}}
  else{const tx=new TextDecoder().decode(buf);const re=/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g;let m,v=[];while((m=re.exec(tx)))v.push(+m[1],+m[2],+m[3]);for(let i=0;i+8<v.length;i+=9)tris.push(v.slice(i,i+9))}
- if(!tris.length){$('pinfo').textContent='Could not read triangles';TRIS=null;return}
+ if(!tris.length){$('pinfo').textContent='Could not read triangles';TRIS=null;$('enl').disabled=true;return}
  let mn=[1e30,1e30,1e30],mx=[-1e30,-1e30,-1e30];
  for(const t of tris)for(let k=0;k<9;k++){const a=k%3;mn[a]=Math.min(mn[a],t[k]);mx[a]=Math.max(mx[a],t[k])}
  const c=mn.map((v,i)=>(v+mx[i])/2),s=2/Math.max(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2],1e-9);
  const step=Math.max(1,Math.ceil(tris.length/7000));
  TRIS=tris.filter((_,i)=>i%step===0).map(t=>t.map((v,k)=>(v-c[k%3])*s));
- $('pinfo').textContent=fmt(tris.length)+' triangles'+(step>1?' (preview shows a sample)':'')+' · drag to rotate';draw()}
+ $('pinfo').textContent=fmt(tris.length)+' triangles'+(step>1?' (preview shows a sample)':'')+' · drag to rotate · Enlarge to auto-rotate';$('enl').disabled=false;draw()}
 function draw(){const cv=$('cv'),g=cv.getContext('2d'),W=cv.width,Hh=cv.height;g.clearRect(0,0,W,Hh);if(!TRIS)return;
  const cx=Math.cos(rx),sx=Math.sin(rx),cy=Math.cos(ry),sy=Math.sin(ry),sc=Math.min(W,Hh)*0.36;
  const P=[];for(const t of TRIS){const v=[];for(let k=0;k<3;k++){let x=t[k*3],y=t[k*3+1],z=t[k*3+2];
@@ -356,6 +364,20 @@ function draw(){const cv=$('cv'),g=cv.getContext('2d'),W=cv.width,Hh=cv.height;g
   g.beginPath();g.moveTo(p.v[0][0],p.v[0][1]);g.lineTo(p.v[1][0],p.v[1][1]);g.lineTo(p.v[2][0],p.v[2][1]);g.closePath();g.fill();g.stroke()}}
 let drag=null;const cv=$('cv');cv.onpointerdown=e=>{drag=[e.clientX,e.clientY];cv.setPointerCapture(e.pointerId)};
 cv.onpointerup=()=>drag=null;cv.onpointermove=e=>{if(!drag)return;ry+=(e.clientX-drag[0])*0.01;rx+=(e.clientY-drag[1])*0.01;drag=[e.clientX,e.clientY];draw()};
+let BIG=false,raf=0,lastT=0,PINFO='';
+if(matchMedia('(prefers-reduced-motion:reduce)').matches)$('auto').checked=false;
+function fit(){const r=cv.getBoundingClientRect(),d=Math.min(window.devicePixelRatio||1,2);cv.width=Math.max(300,Math.round(r.width*d));cv.height=Math.max(150,Math.round(r.height*d));draw()}
+function spin(t){if(!BIG){raf=0;return}
+ if(!lastT)lastT=t;if($('auto').checked&&!drag&&TRIS){const dt=Math.min(64,t-lastT);if(dt>=28){ry+=0.0006*dt;lastT=t;draw()}}else lastT=t;
+ raf=requestAnimationFrame(spin)}
+function setBig(on){if(on&&!TRIS)return;if(on===BIG)return;BIG=on;const c=$('pcard');
+ $('pslot').style.height=on?c.offsetHeight+'px':'';
+ c.classList.toggle('big',on);$('pback').hidden=!on;$('autol').hidden=!on;$('enl').textContent=on?'✕ Close':'⤢ Enlarge';
+ document.body.style.overflow=on?'hidden':'';
+ if(on){PINFO=$('pinfo').textContent;$('pinfo').textContent='Drag to rotate · Esc or click outside to close'}else{$('pinfo').textContent=PINFO||'Drag to rotate'}
+ requestAnimationFrame(()=>{fit();if(on&&!raf){lastT=0;raf=requestAnimationFrame(spin)}})}
+$('enl').onclick=()=>setBig(!BIG);$('pback').onclick=()=>setBig(false);cv.ondblclick=()=>setBig(!BIG);
+addEventListener('keydown',e=>{if(e.key==='Escape'&&BIG)setBig(false)});addEventListener('resize',fit);fit();
 $('go').onclick=async()=>{if(!FILE)return;$('go').disabled=true;$('res').hidden=false;
  $('state').innerHTML='<span class="spin"></span>Converting… large meshes can take a minute';$('kpis').innerHTML='';$('advice').innerHTML='';$('bar').innerHTML='';$('leg').innerHTML='';$('log').textContent='';$('dls').innerHTML='';
  const q=new URLSearchParams({name:FILE.name,fmt:FMT,curves:$('curves').checked?1:0,repair:$('repair').checked?1:0,tol:$('tol').value,ang:$('ang').value,min:$('min').value});
@@ -405,7 +427,7 @@ def main():
     if srv is None:
         sys.exit("No free port found.")
     url = "http://localhost:%d" % port
-    print("STL dashboard version 5 running on %s:%d   (press Ctrl+C to stop)" % (host, port))
+    print("STL dashboard version 7 running on %s:%d   (press Ctrl+C to stop)" % (host, port))
     if host == "127.0.0.1" and not os.environ.get("NO_BROWSER"):
         print("Open " + url)
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()

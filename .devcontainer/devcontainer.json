@@ -1,0 +1,9 @@
+{
+  "name": "STL to STEP",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y libgl1 libglu1-mesa && pip install -r requirements.txt",
+  "containerEnv": { "HOST": "0.0.0.0", "PORT": "8000", "NO_BROWSER": "1" },
+  "forwardPorts": [8000],
+  "portsAttributes": { "8000": { "label": "STL dashboard", "onAutoForward": "openBrowser", "visibility": "private" } },
+  "postAttachCommand": "nohup python dashboard.py > /tmp/dashboard.log 2>&1 &"
+}

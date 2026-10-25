@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+dashboard_output/
+output/
+*.step
+*.STEP
+*.SLDPRT

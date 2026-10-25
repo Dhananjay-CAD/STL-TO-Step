@@ -444,12 +444,39 @@ def _fit_axis(np, N, X):
     return v[:, 0], float(m @ v[:, 0])
 
 
+def _distinct(np, Ns):
+    """number of different facet normals (a flat area full of identical normals must not outvote a curved patch)"""
+    return int(np.unique(np.round(Ns * 40).astype(np.int64), axis=0).shape[0])
+
+
 def fit_cyl(np, tris, F, P, N, X, diag):
-    r = _fit_axis(np, N[tris], X[tris])
-    if r is None or abs(r[1]) > 0.04:
+    tris = np.asarray(tris)
+    Nt = N[tris]
+    cands = []
+    r = _fit_axis(np, Nt, X[tris])
+    if r is not None and abs(r[1]) <= 0.04:
+        cands.append(r[0])
+    rng = np.random.default_rng(len(tris))
+    n = len(tris)
+    for _ in range(40):                                # RANSAC: two facet normals of a cylinder give its axis
+        i, j = rng.integers(0, n, 2)
+        c = np.cross(Nt[i], Nt[j]); l = np.linalg.norm(c)
+        if l > 0.02:
+            cands.append(c / l)
+    best = None
+    for a in cands:
+        inl = np.abs(Nt @ a) < 0.03
+        k = _distinct(np, Nt[inl]) if inl.sum() >= 4 else 0
+        if k >= 4 and (best is None or k > best[0]):
+            best = (k, a, inl)
+    if best is None:
         return None
-    a = r[0]
-    Q = P[np.unique(F[tris])]
+    a = best[1]
+    sub = tris[best[2]]
+    w = np.linalg.eigvalsh(np.cov(N[sub].T)) if len(sub) > 3 else np.zeros(3)
+    if w[2] < 2e-5:
+        return None                                    # normals do not turn: flat, not a cylinder
+    Q = P[np.unique(F[sub])]
     u, v = _basis(np, a)
     x, y = Q @ u, Q @ v
     sol = np.linalg.lstsq(np.c_[2 * x, 2 * y, np.ones(len(x))], x * x + y * y, rcond=None)[0]
@@ -464,17 +491,43 @@ def fit_cyl(np, tris, F, P, N, X, diag):
 
 
 def fit_cone(np, tris, F, P, N, X, diag):
-    r = _fit_axis(np, N[tris], X[tris])
-    if r is None or not (0.04 < abs(r[1]) < 0.995):
-        return None
-    a = r[0]
+    tris = np.asarray(tris)
     Nt, Xt = N[tris], X[tris]
-    apex = np.linalg.lstsq(Nt, (Nt * Xt).sum(1), rcond=None)[0]
-    s = (Xt - apex) @ a
-    if s.mean() < 0:
-        a, s = -a, -s
-    rho = np.linalg.norm((Xt - apex) - s[:, None] * a, axis=1)
-    alpha = float(np.median(np.arctan2(rho, s)))
+    n = len(tris)
+    cands = []
+    r = _fit_axis(np, Nt, Xt)
+    if r is not None:
+        cands.append((r[0], None))
+    rng = np.random.default_rng(n + 7)
+    for _ in range(120):                               # RANSAC: three facet normals of a cone give its axis
+        i, j, k = rng.integers(0, n, 3)
+        c = np.cross(Nt[j] - Nt[i], Nt[k] - Nt[i]); l = np.linalg.norm(c)
+        if l > 0.02:
+            a_ = c / l
+            cands.append((a_, float(Nt[i] @ a_)))
+    best = None
+    for a, cc in cands:
+        d = Nt @ a
+        if cc is None:
+            cc = float(np.median(d))
+        if not (0.04 < abs(cc) < 0.995):
+            continue
+        inl = np.abs(d - cc) < 0.03
+        k = _distinct(np, Nt[inl]) if inl.sum() >= 5 else 0
+        if k >= 5 and (best is None or k > best[0]):
+            best = (k, a, inl)
+    if best is None:
+        return None
+    a, sub = best[1], tris[best[2]]
+    Ns, Xs = N[sub], X[sub]
+    if np.linalg.eigvalsh(np.cov(Ns.T))[2] < 2e-5:
+        return None
+    apex = np.linalg.lstsq(Ns, (Ns * Xs).sum(1), rcond=None)[0]
+    s_ = (Xs - apex) @ a
+    if s_.mean() < 0:
+        a, s_ = -a, -s_
+    rho = np.linalg.norm((Xs - apex) - s_[:, None] * a, axis=1)
+    alpha = float(np.median(np.arctan2(rho, s_)))
     if not (0.03 < alpha < 1.5):
         return None
     return {"type": "cone", "a": a, "c": apex, "alpha": alpha}
@@ -498,6 +551,32 @@ def fit_sphere(np, tris, F, P, N, X, diag):
     return {"type": "sphere", "c": sol[:3], "R": R}
 
 
+def make_torus_fitter(axes):
+    """torus (rounded edges) around known axes: profile circle fitted in (rho, z) - linear least squares"""
+    def fit_torus(np, tris, F, P, N, X, diag):
+        Q = P[np.unique(F[tris])]
+        if len(Q) < 6:
+            return None
+        best = None
+        for (a, c0) in axes:
+            d = Q - c0
+            z = d @ a
+            rho = np.linalg.norm(d - z[:, None] * a, axis=1)
+            sol = np.linalg.lstsq(np.c_[2 * rho, 2 * z, np.ones(len(z))], rho * rho + z * z, rcond=None)[0]
+            R, z0 = sol[0], sol[1]
+            k = sol[2] + R * R + z0 * z0
+            if not np.isfinite(k) or k <= 0 or R <= 0:
+                continue
+            r = float(np.sqrt(k))
+            if r > 0.3 * diag or r > R:
+                continue
+            res = float(np.abs(np.sqrt((rho - R) ** 2 + (z - z0) ** 2) - r).max())
+            if best is None or res < best[0]:
+                best = (res, {"type": "torus", "a": a, "c": c0 + a * z0, "R": float(R), "r": r})
+        return best[1] if best else None
+    return fit_torus
+
+
 FITTERS = {"cyl": fit_cyl, "cone": fit_cone, "sphere": fit_sphere}
 
 
@@ -508,10 +587,25 @@ def prim_dist(np, pr, Q):
         return np.abs(np.linalg.norm(w - (w @ pr["a"])[:, None] * pr["a"], axis=1) - pr["R"])
     if t == "sphere":
         return np.abs(np.linalg.norm(Q - pr["c"], axis=1) - pr["R"])
+    if t == "torus":
+        w = Q - pr["c"]
+        z = w @ pr["a"]
+        rho = np.linalg.norm(w - z[:, None] * pr["a"], axis=1)
+        return np.abs(np.sqrt((rho - pr["R"]) ** 2 + z * z) - pr["r"])
     w = Q - pr["c"]
     s = w @ pr["a"]
     rho = np.linalg.norm(w - s[:, None] * pr["a"], axis=1)
     return np.abs(rho * np.cos(pr["alpha"]) - s * np.sin(pr["alpha"]))
+
+
+def _torus_normal(np, pr, X):
+    w = X - pr["c"]
+    z = w @ pr["a"]
+    rad = w - z[:, None] * pr["a"]
+    rho = np.maximum(np.linalg.norm(rad, axis=1), 1e-12)
+    ring = rad / rho[:, None] * pr["R"] + 0 * z[:, None]
+    v = rad + z[:, None] * pr["a"] - ring
+    return v / np.maximum(np.linalg.norm(v, axis=1), 1e-12)[:, None]
 
 
 def prim_tri_ok(np, pr, P, F, N, X, tol, sin_ang):
@@ -521,6 +615,8 @@ def prim_tri_ok(np, pr, P, F, N, X, tol, sin_ang):
         ok &= np.abs(N @ pr["a"]) < sin_ang
     elif t == "cone":
         ok &= np.abs(np.abs(N @ pr["a"]) - np.sin(pr["alpha"])) < sin_ang * 1.5
+    elif t == "torus":
+        ok &= np.abs((_torus_normal(np, pr, X) * N).sum(1)) > 0.95
     else:
         r = X - pr["c"]
         r = r / np.maximum(np.linalg.norm(r, axis=1), 1e-12)[:, None]
@@ -536,6 +632,8 @@ def tri_ok_local(np, pr, Pt, Nt, Xt, tol, sin_ang):
         ok &= np.abs(Nt @ pr["a"]) < sin_ang
     elif t == "cone":
         ok &= np.abs(np.abs(Nt @ pr["a"]) - np.sin(pr["alpha"])) < sin_ang * 1.5
+    elif t == "torus":
+        ok &= np.abs((_torus_normal(np, pr, Xt) * Nt).sum(1)) > 0.95
     else:
         r = Xt - pr["c"]
         r = r / np.maximum(np.linalg.norm(r, axis=1), 1e-12)[:, None]
@@ -543,7 +641,7 @@ def tri_ok_local(np, pr, Pt, Nt, Xt, tol, sin_ang):
     return ok
 
 
-def detect_primitives(np, P, F, N, A, X, nbr, diag, tol, ang_deg, min_tris):
+def detect_primitives(np, P, F, N, A, X, nbr, diag, tol, ang_deg, min_tris, max_seconds=90):
     nf = len(F)
     sin_ang = float(np.sin(np.radians(ang_deg)))
     cosd = (N[:, None, :] * N[nbr]).sum(2)
@@ -578,11 +676,12 @@ def detect_primitives(np, P, F, N, A, X, nbr, diag, tol, ang_deg, min_tris):
             nb = hood(seed, M)
             if len(nb) < 6:
                 continue
-            for name, fn in FITTERS.items():
+            for name, fn in CF[0].items():
                 pr = fn(np, nb, F, P, N, X, diag)
                 if pr is None:
                     continue
-                if prim_dist(np, pr, P[np.unique(F[nb])]).max() > tol:
+                okn = tri_ok_local(np, pr, P[F[nb]], N[nb], X[nb], tol, sin_ang)
+                if okn.sum() < 6 or not okn[int(np.nonzero(nb == seed)[0][0])]:
                     continue
                 reg = []
                 for _ in range(3):
@@ -594,33 +693,140 @@ def detect_primitives(np, P, F, N, A, X, nbr, diag, tol, ang_deg, min_tris):
                         break
                     pr = p2
                 reg = flood(seed, prim_tri_ok(np, pr, P, F, N, X, tol, sin_ang) & remaining)
-                if len(reg) >= min_tris:
-                    score = float(A[reg].sum()) * (1 + {'cyl': 2e-3, 'cone': 1e-3, 'sphere': 0}[pr['type']])
+                if len(reg) >= (min_tris if pr["type"] in ("cyl", "cone", "sphere") else max(min_tris, 24)):
+                    score = float(A[reg].sum()) * (1 + {'cyl': 2e-3, 'torus': 3e-3, 'cone': 1e-3, 'sphere': 0}[pr['type']])
                     if best is None or score > best[0]:
                         best = (score, pr, reg)
         return best
 
-    out, fails = [], 0
-    while fails < 4:
-        cand = np.nonzero(remaining & cm)[0]
-        if len(cand) < min_tris:
-            break
-        seeds = rng.choice(cand, min(24, len(cand)), replace=False)
-        got = False
-        for sd in seeds:
+    out = []
+    CF = [FITTERS]
+    zero = np.degrees(np.arccos(np.clip(cosd, -1, 1))) < 0.05
+    strip = (zero.sum(1) == 1) & cm          # quad-strip triangles: typical of cylinder / cone walls
+    t_end = time.time() + max_seconds
+
+    def phase(fitters):
+        CF[0] = fitters
+        tried = np.zeros(nf, bool)
+        cand0 = np.nonzero(cm & remaining)[0]
+        order = np.r_[rng.permutation(cand0[strip[cand0]]), rng.permutation(cand0[~strip[cand0]])]
+        for sd in order:
             sd = int(sd)
-            if not remaining[sd]:
+            if tried[sd] or not remaining[sd]:
                 continue
+            if time.time() > t_end:
+                break
             r = try_seed(sd)
             if r:
-                got = True
-                remaining[np.array(r[2])] = False
-                out.append({"prim": r[1], "tris": np.array(r[2])})
-        fails = 0 if got else fails + 1
-    return _merge_regions(np, out, P, F, N, X, nbr, diag, tol, sin_ang)
+                reg = np.array(r[2])
+                remaining[reg] = False; tried[reg] = True
+                out.append({"prim": r[1], "tris": reg})
+            else:
+                tried[hood(sd, 12)] = True
+
+    phase({"cyl": fit_cyl})                                   # 1) cylinders
+
+    def span_deg(c):
+        pr = c["prim"]; u, v = _basis(np, pr["a"])
+        Q = P[np.unique(F[c["tris"]])] - pr["c"]
+        th = np.sort(np.arctan2(Q @ v, Q @ u))
+        return 360.0 - float(np.degrees(np.diff(np.r_[th, th[0] + 2 * np.pi]).max()))
+    anchors = [c for c in out if c["prim"]["type"] == "cyl" and span_deg(c) >= 160]   # holes, bosses, round bars
+    for c in out:
+        if not any(c is a_ for a_ in anchors):
+            remaining[c["tris"]] = True                       # thin cylinder-like slivers: may be torus pieces, re-examine
+    out[:] = anchors
+    axes = []
+    for c in out:
+        a_, c_ = c["prim"]["a"], c["prim"]["c"]
+        if not any(abs(abs(a_ @ b_) - 1) < 1e-4 and np.linalg.norm(np.cross(a_, c_ - bc_)) < tol for b_, bc_ in axes):
+            axes.append((a_, c_))
+    allf = dict(FITTERS)
+    if axes:
+        allf["torus"] = make_torus_fitter(axes)
+        phase({"torus": allf["torus"], "cone": fit_cone, "sphere": fit_sphere})   # 2) torus (rounded edges) vs cone vs sphere: biggest fit wins
+    phase({"cone": fit_cone, "sphere": fit_sphere})           # 3) cones + spheres
+    phase({"cyl": fit_cyl})                                   # 4) remaining straight cylinder pieces (fillets etc.)
+    out = _refine_boundaries(np, out, P, F, N, nbr, tol)
+    out = _attach_slivers(np, out, P, F, N, X, nbr, tol, sin_ang)
+    return _merge_regions(np, out, P, F, N, X, nbr, diag, tol, sin_ang, allf)
 
 
-def _merge_regions(np, out, P, F, N, X, nbr, diag, tol, sin_ang):
+def _attach_slivers(np, out, P, F, N, X, nbr, tol, sin_ang):
+    """stray triangles that lie on a neighbouring curved surface (within tolerance) but were missed: adopt them"""
+    if not out:
+        return out
+    nf = len(F)
+    lab = -np.ones(nf, dtype=np.int64)
+    for i, r in enumerate(out):
+        lab[r["tris"]] = i
+    for _ in range(8):
+        nbl = np.where(nbr >= 0, lab[np.where(nbr >= 0, nbr, 0)], -1)
+        cand = np.nonzero((lab < 0) & (nbl >= 0).any(1))[0]
+        moved = 0
+        for t in cand:
+            best = None
+            for b in set(nbl[t].tolist()):
+                if b < 0:
+                    continue
+                pr = out[b]["prim"]
+                if tri_ok_local(np, pr, P[F[t]][None], N[t][None], X[t][None], tol, sin_ang)[0]:
+                    d = float(prim_dist(np, pr, P[F[t]]).max())
+                    if best is None or d < best[0]:
+                        best = (d, b)
+            if best:
+                lab[t] = best[1]; moved += 1
+        if not moved:
+            break
+    res = []
+    for i, r in enumerate(out):
+        t = np.nonzero(lab == i)[0]
+        if len(t):
+            res.append({"prim": r["prim"], "tris": t})
+    return res
+
+
+def _refine_boundaries(np, out, P, F, N, nbr, tol):
+    """tangent surfaces (cylinder <-> rounded edge) overlap within tolerance: give every border triangle to the
+    surface that really contains it, so region borders become exact circles / lines instead of ragged strips"""
+    if len(out) < 2:
+        return out
+    nf = len(F)
+    eps = max(tol * 0.02, 1e-9)
+    lab = -np.ones(nf, dtype=np.int64)
+    for i, r in enumerate(out):
+        lab[r["tris"]] = i
+    for _ in range(10):
+        nb_lab = np.where(nbr >= 0, lab[np.where(nbr >= 0, nbr, 0)], -1)
+        border = np.nonzero((lab >= 0) & ((nb_lab >= 0) & (nb_lab != lab[:, None])).any(1))[0]
+        moves = []
+        for t in border:
+            a = lab[t]
+            Q = P[F[t]]
+            dA = float(prim_dist(np, out[a]["prim"], Q).max())
+            best = (dA, a)
+            for b in set(nb_lab[t].tolist()):
+                if b < 0 or b == a:
+                    continue
+                dB = float(prim_dist(np, out[b]["prim"], Q).max())
+                if dA > eps and dB < tol and dB < 0.5 * best[0]:
+                    best = (dB, b)
+            if best[1] != a:
+                moves.append((t, best[1]))
+        if not moves:
+            break
+        for t, b in moves:
+            lab[t] = b
+    res = []
+    for i, r in enumerate(out):
+        t = np.nonzero(lab == i)[0]
+        if len(t):
+            res.append({"prim": r["prim"], "tris": t})
+    return res
+
+
+def _merge_regions(np, out, P, F, N, X, nbr, diag, tol, sin_ang, fitters=None):
+    fitters = fitters or FITTERS
     """join neighbouring pieces that are really one surface (fixes over-segmentation on noisy meshes)"""
     if len(out) < 2:
         return out
@@ -648,7 +854,7 @@ def _merge_regions(np, out, P, F, N, X, nbr, diag, tol, sin_ang):
             if out[a]["prim"]["type"] != out[b]["prim"]["type"]:
                 continue
             tris = np.concatenate([out[a]["tris"], out[b]["tris"]])
-            pr = FITTERS[out[a]["prim"]["type"]](np, tris, F, P, N, X, diag)
+            pr = fitters[out[a]["prim"]["type"]](np, tris, F, P, N, X, diag)
             if pr is None:
                 continue
             ok = tri_ok_local(np, pr, P[F[tris]], N[tris], X[tris], tol, sin_ang)
@@ -718,7 +924,7 @@ def _segment_chain(np, Q, closed, tol, diag):
 
 def build_brep(np, P, F, N, A, X, nbr, curved, diag, tol, ang_merge_deg, log):
     from OCP.gp import gp_Pnt, gp_Dir, gp_Ax2, gp_Ax3, gp_Pln, gp_Circ
-    from OCP.Geom import Geom_Plane, Geom_CylindricalSurface, Geom_SphericalSurface, Geom_ConicalSurface
+    from OCP.Geom import Geom_Plane, Geom_CylindricalSurface, Geom_SphericalSurface, Geom_ConicalSurface, Geom_ToroidalSurface
     from OCP.BRepBuilderAPI import (BRepBuilderAPI_MakeVertex, BRepBuilderAPI_MakeEdge,
                                     BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeFace,
                                     BRepBuilderAPI_Sewing, BRepBuilderAPI_MakeSolid)
@@ -868,6 +1074,8 @@ def build_brep(np, P, F, N, A, X, nbr, curved, diag, tol, ang_merge_deg, log):
             else gp_Ax3(gp_Pnt(*[float(x) for x in pr["c"]]), gp_Dir(0, 0, 1))
         if pr["type"] == "cyl":
             return Geom_CylindricalSurface(ax, pr["R"])
+        if pr["type"] == "torus":
+            return Geom_ToroidalSurface(ax, pr["R"], pr["r"])
         if pr["type"] == "sphere":
             return Geom_SphericalSurface(ax, pr["R"])
         # cone: place location at mean height
@@ -941,14 +1149,22 @@ def build_brep(np, P, F, N, A, X, nbr, curved, diag, tol, ang_merge_deg, log):
             bad.add(ri); continue
         order = sorted(range(len(wires)), key=lambda k: -areas[k])
         face = None
+        mesh_area = float(A[rg["tris"]].sum())
+        def area_ok(fc):
+            if pr["type"] == "plane":
+                return True
+            g_ = GProp_GProps(); BRepGProp.SurfaceProperties_s(fc, g_)
+            return 0.8 <= g_.Mass() / max(mesh_area, 1e-12) <= 1.25
         try:
-            for flip in (False, True):
+            combos = [(f_, sw_) for f_ in (False, True) for sw_ in ((False, True) if len(wires) == 2 else (False,))]
+            for flip, swap in combos:
                 ws = [st(TopoDS, "Wire")(w.Reversed()) if flip else w for w in wires]
-                mf = BRepBuilderAPI_MakeFace(surf, ws[order[0]], True)
-                for k in order[1:]:
+                od = order[::-1] if swap else order
+                mf = BRepBuilderAPI_MakeFace(surf, ws[od[0]], True)
+                for k in od[1:]:
                     mf.Add(ws[k])
                 fix = ShapeFix_Face(mf.Face()); fix.SetPrecision(tol); fix.Perform()
-                if BRepCheck_Analyzer(fix.Face()).IsValid():
+                if BRepCheck_Analyzer(fix.Face()).IsValid() and area_ok(fix.Face()):
                     face = fix.Face()
                     break
         except Exception as ex:
@@ -969,6 +1185,10 @@ def build_brep(np, P, F, N, A, X, nbr, curved, diag, tol, ang_merge_deg, log):
                 log("  sphere cap failed: %s" % ex)
         if face is None:
             log("  region %d (%s) invalid: loops=%s" % (ri, pr["type"], [len(l) for l in loops]))
+            if os.environ.get("STL2STEP_DEBUG"):
+                for lp in loops:
+                    log("     loop: " + " | ".join("chain%d(%dv, neighbours %s/%s, %d edges)" % (
+                        ci, len(chains[ci]), regions[eu[(min(chains[ci][0], chains[ci][1]), max(chains[ci][0], chains[ci][1]))][0]]["prim"]["type"], regions[eu[(min(chains[ci][0], chains[ci][1]), max(chains[ci][0], chains[ci][1]))][1]]["prim"]["type"], len(edges_of(ci))) for (ci, sg, sv, ev) in lp))
             bad.add(ri)
         else:
             faces.append(face)
