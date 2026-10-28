@@ -411,7 +411,7 @@ function show(d){LAST=d;let st=d.ok?'<b class="good">Done</b> · '+d.mode+' · '
   $('leg').innerHTML=Object.entries(d.faces).map(([k,v])=>'<span><i style="background:'+colr(k)+'"></i>'+(NAME[k]||k)+' '+v+'</span>').join('')}
  $('dls').innerHTML='<a class="dl" href="/download/'+d.file+'"><button>Download STEP</button></a>''}
 async function loadHist(){const h=await (await fetch('/api/history')).json();$('hnone').style.display=h.length?'none':'';
- $('hist').innerHTML=h.map(x=>{const tot=Object.values(x.faces||{}).reduce((a,b)=>a+b,0);return '<tr><td>'+x.name+'</td><td><span class="tag">'+x.mode+'</span></td><td>'+fmt(x.tris)+'</td><td>'+fmt(tot)+'</td><td>'+x.seconds+' s</td><td>'+sz(x.size)+'</td><td><a class="dl" href="/download/'+x.file+'">STEP</a>'+'</td></tr>'}).join('')}
+ $('hist').innerHTML=h.map(x=>{const tot=Object.values(x.faces||{}).reduce((a,b)=>a+b,0);return '<tr><td>'+x.name+'</td><td><span class="tag">'+x.mode+'</span></td><td>'+fmt(x.tris)+'</td><td>'+fmt(tot)+'</td><td>'+x.seconds+' s</td><td>'+sz(x.size)+'</td><td><a class="dl" href="/download/'+x.file+'">STEP</a></td></tr>'}).join('')}
 function applyTheme(){let m='auto';try{m=localStorage.getItem('theme')||'auto'}catch(e){}
  const dark=m==='dark'||(m==='auto'&&matchMedia('(prefers-color-scheme:dark)').matches);
  document.documentElement.classList.toggle('dark',dark);
