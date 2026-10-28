@@ -7,7 +7,7 @@ STL -> STEP dashboard.   Put this file next to stl2step.py, then run:
 and open http://localhost:8000  (it opens automatically).
 Needs:  pip install numpy cadquery-ocp   (same as stl2step.py)
 """
-import ast, base64, contextlib, hmac, io, json, os, re, sys, threading, time, webbrowser
+import ast, contextlib, io, json, os, re, sys, threading, time, webbrowser
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote
 
@@ -19,6 +19,7 @@ OUT = os.path.join(HERE, "dashboard_output")
 os.makedirs(OUT, exist_ok=True)
 HIST = os.path.join(OUT, "history.json")
 LOCK = threading.Lock()
+SW_LOCK = threading.Lock()
 
 
 def load_hist():
@@ -136,47 +137,34 @@ def make_sldprt(step, res):
         print("  SLDPRT not created: " + why + " The STEP file is ready to download.")
         return
     pc = None
-    try:
-        import pythoncom
-        pythoncom.CoInitialize()
-        pc = pythoncom
-        import win32com.client
-        import step2sldprt
-        sw = win32com.client.Dispatch("SldWorks.Application")
-        sw.Visible = True
-        step2sldprt.convert(sw, step, sld)
-        res["sldprt"] = os.path.basename(sld)
-        print("  SolidWorks part saved: " + os.path.basename(sld))
-    except Exception as e:
-        print("  SLDPRT failed: %s. The STEP file is ready to download." % e)
-    finally:
-        if pc:
-            try: pc.CoUninitialize()
-            except Exception: pass
-
-
-MAX_UPLOAD = int(os.environ.get("MAX_UPLOAD_MB", "200")) * 1024 * 1024
+    sw = None
+    started = False
+    with SW_LOCK:  # one SolidWorks job at a time
+        try:
+            import pythoncom
+            pythoncom.CoInitialize()
+            pc = pythoncom
+            import step2sldprt
+            # SolidWorks runs hidden in the background: no window, no document tab.
+            sw, started = step2sldprt.start_solidworks(show=False)
+            step2sldprt.convert(sw, step, sld, hide=True)
+            res["sldprt"] = os.path.basename(sld)
+            print("  SolidWorks part saved: " + os.path.basename(sld))
+        except Exception as e:
+            print("  SLDPRT failed: %s. The STEP file is ready to download." % e)
+        finally:
+            if sw is not None:
+                try: step2sldprt.release(sw, started)  # closes it only if we started it
+                except Exception: pass
+                sw = None
+            if pc:
+                try: pc.CoUninitialize()
+                except Exception: pass
 
 
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
-
-    def authed(self):
-        """Optional password: set the DASH_PASSWORD environment variable (user name can be anything)."""
-        pw = os.environ.get("DASH_PASSWORD")
-        if not pw:
-            return True
-        h = self.headers.get("Authorization", "")
-        if h.startswith("Basic "):
-            try:
-                given = base64.b64decode(h[6:]).decode("utf-8").partition(":")[2]
-                if hmac.compare_digest(given, pw):
-                    return True
-            except Exception:
-                pass
-        self.send(401, "Password required", "text/plain", {"WWW-Authenticate": 'Basic realm="STL dashboard"'})
-        return False
 
     def send(self, code, body, ctype="application/json", extra=None):
         if isinstance(body, str):
@@ -190,8 +178,6 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if not self.authed():
-            return
         p = urlparse(self.path).path
         if p == "/":
             return self.send(200, PAGE, "text/html; charset=utf-8")
@@ -210,16 +196,12 @@ class H(BaseHTTPRequestHandler):
         self.send(404, "not found", "text/plain")
 
     def do_POST(self):
-        if not self.authed():
-            return
         u = urlparse(self.path)
         if u.path != "/api/convert":
             return self.send(404, "not found", "text/plain")
         q = parse_qs(u.query)
         g = lambda k, d: q.get(k, [d])[0]
         n = int(self.headers.get("Content-Length", 0))
-        if n > MAX_UPLOAD:
-            return self.send(413, json.dumps({"error": "file too large"}))
         data = self.rfile.read(n)
         try:
             o = {"curves": g("curves", "1") == "1", "tol": float(g("tol", "0.0005")),
@@ -354,7 +336,7 @@ const PRE=[[0.0005,8],[0.002,10],[0.005,15]];
 $('preset').onchange=()=>{const p=PRE[+$('preset').value];$('tol').value=p[0];$('ang').value=p[1]};
 document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>{if(b.disabled)return;FMT=b.dataset.f;
  document.querySelectorAll('#seg button').forEach(x=>x.classList.toggle('on',x===b));$('go').textContent=LABEL[FMT];
- $('fnote').textContent=FMT==='sldprt'?(SERVER_SW?'SolidWorks opens on this PC for a moment to save the part. A STEP file is always kept too.':'The part is made by SolidWorks on your own PC through the bridge. Enter its address and token below. A STEP file is always kept too.'):''});
+ $('fnote').textContent=FMT==='sldprt'?(SERVER_SW?'SolidWorks runs silently in the background (no window opens) to save the part. A STEP file is always kept too.':'The part is made by SolidWorks on your own PC through the bridge. Enter its address and token below. A STEP file is always kept too.'):''});
 fetch('/api/env').then(r=>r.json()).then(e=>{if(!e.sldprt){SERVER_SW=false;$('bridge').hidden=false;$('bridge').open=true;$('fnote').innerHTML='<span class="warn">This server cannot run SolidWorks:</span> '+e.reason+' <b>Use the SolidWorks bridge below</b> to make the .SLDPRT on your own PC.'}});
 const CV=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const colr=k=>({plane:CV('--muted-foreground'),cyl:CV('--chart-1'),cone:CV('--chart-3'),sphere:CV('--ok'),torus:CV('--chart-5')})[k]||'#888';
@@ -461,26 +443,18 @@ loadHist();
 
 
 def main():
-    host = os.environ.get("HOST", "127.0.0.1")
-    fixed = "PORT" in os.environ
-    port = int(os.environ.get("PORT", 8000))
+    port = 8000
     srv = None
-    while srv is None and port < 8020 + (100000 if fixed else 0):
+    while srv is None and port < 8020:
         try:
-            srv = ThreadingHTTPServer((host, port), H)
+            srv = ThreadingHTTPServer(("127.0.0.1", port), H)
         except OSError:
-            if fixed:
-                sys.exit("Port %d is busy." % port)
             port += 1
     if srv is None:
         sys.exit("No free port found.")
     url = "http://localhost:%d" % port
-    print("STL dashboard version 7 running on %s:%d   (press Ctrl+C to stop)" % (host, port))
-    if host == "127.0.0.1" and not os.environ.get("NO_BROWSER"):
-        print("Open " + url)
-        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
-    if host != "127.0.0.1" and not os.environ.get("DASH_PASSWORD"):
-        print("WARNING: no DASH_PASSWORD set. Anyone who can reach this address can use the dashboard.")
+    print("STL dashboard version 7 running at %s   (press Ctrl+C to stop)" % url)
+    threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
@@ -489,3 +463,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
