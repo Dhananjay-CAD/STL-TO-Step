@@ -232,7 +232,7 @@ class H(BaseHTTPRequestHandler):
 
 PAGE = r'''<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>STL to STEP Dashboard</title>
+<title>STL to STEP Converter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
 <script>try{var m=localStorage.getItem("theme")||"auto";if(m==="dark"||(m==="auto"&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.classList.add("dark")}catch(e){}</script>
@@ -313,21 +313,13 @@ canvas{touch-action:none}
 input[type=text],input[type=password]{padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--background);color:var(--foreground);font:inherit;font-size:13px}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px;margin-right:6px}@keyframes s{to{transform:rotate(360deg)}}
 </style></head><body>
-<header><h1>STL → STEP / SolidWorks</h1><div class="theme" id="theme"><button type="button" data-t="light">Light</button><button type="button" data-t="dark">Dark</button><button type="button" data-t="auto">Auto</button></div></header>
+<header><h1>STL → STEP Converter</h1><div class="theme" id="theme"><button type="button" data-t="light">Light</button><button type="button" data-t="dark">Dark</button><button type="button" data-t="auto">Auto</button></div></header>
 <main>
 <section class="card"><h2>1 · Upload</h2>
 <div id="drop"><b>Drop an STL here</b>or click to choose a file</div>
 <input id="file" type="file" accept=".stl" hidden>
 <div class="msg" id="fname" style="margin-top:10px">No file selected</div>
-<h2 style="margin-top:18px">2 · Output format</h2>
-<div class="seg" id="seg"><button type="button" class="on" data-f="step">STL → STEP<small>.step · works everywhere</small></button><button type="button" data-f="sldprt" id="bsld">STL → SolidWorks Part<small>.SLDPRT · needs SolidWorks</small></button></div>
-<div class="msg" id="fnote" style="margin-top:6px"></div>
-<details id="bridge" hidden style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">SolidWorks bridge (for a hosted / cloud dashboard)</summary>
-<div class="msg" style="margin:8px 0">On the Windows PC that has SolidWorks, run <code>python sw_bridge.py</code> (or double-click <code>start_bridge.bat</code>). Paste the address and token it shows. Use Chrome or Edge.</div>
-<div class="row"><label>Bridge address</label><input type="text" id="bturl" value="http://127.0.0.1:8765" style="width:200px"></div>
-<div class="row"><label>Token</label><input type="password" id="bttok" placeholder="from the bridge window" style="width:200px"></div>
-<div class="row"><button type="button" class="sec sm" id="bttest">Test connection</button><span class="msg" id="btstat"></span></div></details>
-<h2 style="margin-top:18px">3 · Settings</h2>
+<h2 style="margin-top:18px">2 · Settings</h2>
 <div class="row"><label>Recover curved surfaces<small>Holes, fillets, bosses, cones, domes</small></label><input type="checkbox" id="curves" checked></div>
 <div class="row"><label>Repair mesh first<small>Closes holes and fixes flipped triangles so you get a solid</small></label><input type="checkbox" id="repair" checked></div>
 <div class="row"><label>Smoothing level<small>Higher = merges more small triangles into bigger faces (less mesh lines, slightly less exact)</small></label>
@@ -345,28 +337,12 @@ input[type=text],input[type=password]{padding:6px 8px;border:1px solid var(--bor
 <div class="bar" id="bar"></div><div class="leg" id="leg"></div>
 <div style="margin:14px 0 10px;display:flex;gap:10px;flex-wrap:wrap" id="dls"></div>
 <pre id="log"></pre></section>
-<section class="card full"><h2>History</h2><table><thead><tr><th>File</th><th>Format</th><th>Mode</th><th>Triangles</th><th>Faces</th><th>Time</th><th>Size</th><th></th></tr></thead><tbody id="hist"></tbody></table><div class="msg" id="hnone">No conversions yet.</div></section>
+<section class="card full"><h2>History</h2><table><thead><tr><th>File</th><th>Mode</th><th>Triangles</th><th>Faces</th><th>Time</th><th>Size</th><th></th></tr></thead><tbody id="hist"></tbody></table><div class="msg" id="hnone">No conversions yet.</div></section>
 </main>
 <script>
-const $=id=>document.getElementById(id);let FILE=null,TRIS=null,rx=-0.6,ry=0.6,FMT='step';
-const LABEL={step:'Convert to STEP',sldprt:'Convert to SolidWorks Part (.SLDPRT)'};
+const $=id=>document.getElementById(id);let FILE=null,TRIS=null,rx=-0.6,ry=0.6;
 const PRE=[[0.0005,8],[0.002,10],[0.005,15]];
 $('preset').onchange=()=>{const p=PRE[+$('preset').value];$('tol').value=p[0];$('ang').value=p[1]};
-function updateFormatUI(){
- $('go').textContent=LABEL[FMT];
- $('bridge').hidden=SERVER_SW||FMT!=='sldprt';
- $('bridge').open=!SERVER_SW&&FMT==='sldprt';
- if(FMT==='step'){$('fnote').textContent='';return}
- $('fnote').textContent=SERVER_SW
-  ?'SolidWorks will open on this PC to save the part. A STEP file is always kept too.'
-  :'This cloud server cannot run SolidWorks. Connect the bridge below to create the .SLDPRT; STEP conversion works normally.';
-}
-document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>{
- if(b.disabled)return;FMT=b.dataset.f;
- document.querySelectorAll('#seg button').forEach(x=>x.classList.toggle('on',x===b));
- updateFormatUI();
-});
-fetch('/api/env').then(r=>r.json()).then(e=>{SERVER_SW=!!e.sldprt;updateFormatUI()}).catch(()=>{SERVER_SW=false;updateFormatUI()});
 const CV=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const colr=k=>({plane:CV('--muted-foreground'),cyl:CV('--chart-1'),cone:CV('--chart-3'),sphere:CV('--ok'),torus:CV('--chart-5')})[k]||'#888';
 const NAME={plane:'Flat',cyl:'Cylinder',cone:'Cone',sphere:'Sphere',torus:'Rounded edge'};
@@ -416,36 +392,13 @@ $('enl').onclick=()=>setBig(!BIG);$('pback').onclick=()=>setBig(false);cv.ondblc
 addEventListener('keydown',e=>{if(e.key==='Escape'&&BIG)setBig(false)});addEventListener('resize',fit);fit();
 $('go').onclick=async()=>{if(!FILE)return;$('go').disabled=true;$('res').hidden=false;
  $('state').innerHTML='<span class="spin"></span>Converting… large meshes can take a minute';$('kpis').innerHTML='';$('advice').innerHTML='';$('bar').innerHTML='';$('leg').innerHTML='';$('log').textContent='';$('dls').innerHTML='';
- const q=new URLSearchParams({name:FILE.name,fmt:FMT,curves:$('curves').checked?1:0,repair:$('repair').checked?1:0,tol:$('tol').value,ang:$('ang').value,min:$('min').value});
- try{const r=await fetch('/api/convert?'+q,{method:'POST',body:FILE});const d=await r.json();show(d);loadHist();if(d.ok&&d.fmt==='sldprt'&&!d.sldprt&&bridgeReady())await viaBridge(d)}
+ const q=new URLSearchParams({name:FILE.name,curves:$('curves').checked?1:0,repair:$('repair').checked?1:0,tol:$('tol').value,ang:$('ang').value,min:$('min').value});
+ try{const r=await fetch('/api/convert?'+q,{method:'POST',body:FILE});const d=await r.json();show(d);loadHist()}
  catch(e){$('state').innerHTML='<b class="bad">Could not reach the converter. Is dashboard.py still running?</b>'}
  $('go').disabled=false};
-let SERVER_SW=true;
-const brUrl=()=>($('bturl').value||'').replace(/\/+$/,''),brTok=()=>$('bttok').value.trim();
-try{$('bturl').value=localStorage.getItem('swb_url')||$('bturl').value;$('bttok').value=localStorage.getItem('swb_tok')||''}catch(e){}
-function saveBr(){try{localStorage.setItem('swb_url',$('bturl').value);localStorage.setItem('swb_tok',$('bttok').value)}catch(e){}}
-$('bturl').onchange=saveBr;$('bttok').onchange=saveBr;
-const bridgeReady=()=>!SERVER_SW&&!!brTok();
-$('bttest').onclick=async()=>{saveBr();$('btstat').textContent='Checking…';
- try{const r=await fetch(brUrl()+'/ping');const j=await r.json();
-  $('btstat').innerHTML=j.solidworks?'<b class="good">Connected. SolidWorks is ready.</b>':'<b class="bad">Bridge found, but SolidWorks is not ready:</b> '+j.reason}
- catch(e){$('btstat').innerHTML='<b class="bad">Cannot reach the bridge.</b> Is python sw_bridge.py running on your PC? Use Chrome or Edge.'}};
-async function viaBridge(d){
- const set=h=>{const b=$('brst');if(b)b.innerHTML=h};
- set(' · <span class="spin"></span>Asking SolidWorks on your PC…');
- try{
-  const s=await fetch('/download/'+d.file);if(!s.ok)throw new Error('could not read the STEP file from the dashboard');
-  const body=await s.blob();
-  const r=await fetch(brUrl()+'/convert?name='+encodeURIComponent(d.name),{method:'POST',headers:{'X-Bridge-Token':brTok()},body});
-  if(!r.ok){let m='';try{m=(await r.json()).error}catch(_){}throw new Error(m||('the bridge answered '+r.status))}
-  const blob=await r.blob(),a=document.createElement('a');
-  a.className='dl';a.href=URL.createObjectURL(blob);a.download=d.name.replace(/\.(step|stp)$/i,'')+'.SLDPRT';
-  a.innerHTML='<button>Download SolidWorks Part (.SLDPRT)</button>';$('dls').prepend(a);
-  set(' · <b class="good">SolidWorks Part ready</b>');
- }catch(e){set(' · <b class="bad">SolidWorks Part not created:</b> '+(e.message||e)+' (the STEP file is ready)')}}
 let LAST=null;
 function show(d){LAST=d;let st=d.ok?'<b class="good">Done</b> · '+d.mode+' · '+d.seconds+' s':'<b class="bad">Conversion failed</b> · see log';
- if(d.ok&&d.fmt==='sldprt'&&!d.sldprt&&!bridgeReady())st+=' · <b class="bad">SolidWorks Part not created</b> '+(SERVER_SW?'(STEP is ready, see log)':'(STEP is ready. Set up the SolidWorks bridge in the box under Output format)');st+='<span id="brst"></span>';$('state').innerHTML=st;
+ $('state').innerHTML=st;
  $('log').textContent=(d.log||[]).join('\n');
  if(!d.ok)return;
  const tot=Object.values(d.faces).reduce((a,b)=>a+b,0),cur=Object.values(d.curved||{}).reduce((a,b)=>a+b,0);
@@ -456,9 +409,9 @@ function show(d){LAST=d;let st=d.ok?'<b class="good">Done</b> · '+d.mode+' · '
  $('kpis').innerHTML=kp.map(a=>'<div class="k"><b>'+a[1]+'</b><span>'+a[0]+'</span></div>').join('');
  if(tot){$('bar').innerHTML=Object.entries(d.faces).map(([k,v])=>'<div title="'+k+'" style="width:'+v/tot*100+'%;background:'+colr(k)+'"></div>').join('');
   $('leg').innerHTML=Object.entries(d.faces).map(([k,v])=>'<span><i style="background:'+colr(k)+'"></i>'+(NAME[k]||k)+' '+v+'</span>').join('')}
- $('dls').innerHTML=(d.sldprt?'<a class="dl" href="/download/'+d.sldprt+'"><button>Download SolidWorks Part (.SLDPRT)</button></a>':'')+'<a class="dl" href="/download/'+d.file+'"><button'+(d.sldprt?' class="sec"':'')+'>Download STEP</button></a>'}
+ $('dls').innerHTML='<a class="dl" href="/download/'+d.file+'"><button>Download STEP</button></a>''}
 async function loadHist(){const h=await (await fetch('/api/history')).json();$('hnone').style.display=h.length?'none':'';
- $('hist').innerHTML=h.map(x=>{const tot=Object.values(x.faces||{}).reduce((a,b)=>a+b,0);return '<tr><td>'+x.name+'</td><td>'+(x.sldprt?'STEP + SLDPRT':'STEP')+'</td><td><span class="tag">'+x.mode+'</span></td><td>'+fmt(x.tris)+'</td><td>'+fmt(tot)+'</td><td>'+x.seconds+' s</td><td>'+sz(x.size)+'</td><td><a class="dl" href="/download/'+x.file+'">STEP</a>'+(x.sldprt?' · <a class="dl" href="/download/'+x.sldprt+'">SLDPRT</a>':'')+'</td></tr>'}).join('')}
+ $('hist').innerHTML=h.map(x=>{const tot=Object.values(x.faces||{}).reduce((a,b)=>a+b,0);return '<tr><td>'+x.name+'</td><td><span class="tag">'+x.mode+'</span></td><td>'+fmt(x.tris)+'</td><td>'+fmt(tot)+'</td><td>'+x.seconds+' s</td><td>'+sz(x.size)+'</td><td><a class="dl" href="/download/'+x.file+'">STEP</a>'+'</td></tr>'}).join('')}
 function applyTheme(){let m='auto';try{m=localStorage.getItem('theme')||'auto'}catch(e){}
  const dark=m==='dark'||(m==='auto'&&matchMedia('(prefers-color-scheme:dark)').matches);
  document.documentElement.classList.toggle('dark',dark);
