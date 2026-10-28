@@ -313,7 +313,7 @@ canvas{touch-action:none}
 input[type=text],input[type=password]{padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--background);color:var(--foreground);font:inherit;font-size:13px}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px;margin-right:6px}@keyframes s{to{transform:rotate(360deg)}}
 </style></head><body>
-<header><h1>STL → STEP / SolidWorks</h1><span class="sub">Version 7 · runs locally, files never leave your computer</span><div class="theme" id="theme"><button type="button" data-t="light">Light</button><button type="button" data-t="dark">Dark</button><button type="button" data-t="auto">Auto</button></div></header>
+<header><h1>STL → STEP / SolidWorks</h1><div class="theme" id="theme"><button type="button" data-t="light">Light</button><button type="button" data-t="dark">Dark</button><button type="button" data-t="auto">Auto</button></div></header>
 <main>
 <section class="card"><h2>1 · Upload</h2>
 <div id="drop"><b>Drop an STL here</b>or click to choose a file</div>
@@ -352,10 +352,21 @@ const $=id=>document.getElementById(id);let FILE=null,TRIS=null,rx=-0.6,ry=0.6,F
 const LABEL={step:'Convert to STEP',sldprt:'Convert to SolidWorks Part (.SLDPRT)'};
 const PRE=[[0.0005,8],[0.002,10],[0.005,15]];
 $('preset').onchange=()=>{const p=PRE[+$('preset').value];$('tol').value=p[0];$('ang').value=p[1]};
-document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>{if(b.disabled)return;FMT=b.dataset.f;
- document.querySelectorAll('#seg button').forEach(x=>x.classList.toggle('on',x===b));$('go').textContent=LABEL[FMT];
- $('fnote').textContent=FMT==='sldprt'?(SERVER_SW?'SolidWorks opens on this PC for a moment to save the part. A STEP file is always kept too.':'The part is made by SolidWorks on your own PC through the bridge. Enter its address and token below. A STEP file is always kept too.'):''});
-fetch('/api/env').then(r=>r.json()).then(e=>{if(!e.sldprt){SERVER_SW=false;$('bridge').hidden=false;$('bridge').open=true;$('fnote').innerHTML='<span class="warn">This server cannot run SolidWorks:</span> '+e.reason+' <b>Use the SolidWorks bridge below</b> to make the .SLDPRT on your own PC.'}});
+function updateFormatUI(){
+ $('go').textContent=LABEL[FMT];
+ $('bridge').hidden=SERVER_SW||FMT!=='sldprt';
+ $('bridge').open=!SERVER_SW&&FMT==='sldprt';
+ if(FMT==='step'){$('fnote').textContent='';return}
+ $('fnote').textContent=SERVER_SW
+  ?'SolidWorks will open on this PC to save the part. A STEP file is always kept too.'
+  :'This cloud server cannot run SolidWorks. Connect the bridge below to create the .SLDPRT; STEP conversion works normally.';
+}
+document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>{
+ if(b.disabled)return;FMT=b.dataset.f;
+ document.querySelectorAll('#seg button').forEach(x=>x.classList.toggle('on',x===b));
+ updateFormatUI();
+});
+fetch('/api/env').then(r=>r.json()).then(e=>{SERVER_SW=!!e.sldprt;updateFormatUI()}).catch(()=>{SERVER_SW=false;updateFormatUI()});
 const CV=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const colr=k=>({plane:CV('--muted-foreground'),cyl:CV('--chart-1'),cone:CV('--chart-3'),sphere:CV('--ok'),torus:CV('--chart-5')})[k]||'#888';
 const NAME={plane:'Flat',cyl:'Cylinder',cone:'Cone',sphere:'Sphere',torus:'Rounded edge'};
